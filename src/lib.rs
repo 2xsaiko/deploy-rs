@@ -328,6 +328,8 @@ pub struct DeployData<'a> {
 #[derive(Debug)]
 pub struct DeployDefs {
     pub ssh_user: String,
+    pub check_ssh_user: String,
+    pub check_ssh_opts: Vec<String>,
     pub profile_user: String,
     pub profile_path: String,
     pub sudo: Option<String>,
@@ -346,6 +348,16 @@ impl<'a> DeployData<'a> {
             None => whoami::username(),
         };
 
+        let check_ssh_user = match self.merged_settings.check_ssh_user {
+            Some(ref u) => u.clone(),
+            None => ssh_user.clone(),
+        };
+
+        let check_ssh_opts = match self.merged_settings.check_ssh_opts {
+            Some(ref u) => u.clone(),
+            None => self.merged_settings.ssh_opts.clone(),
+        };
+
         let profile_user = self.get_profile_user()?;
 
         let profile_path = self.get_profile_path()?;
@@ -357,6 +369,8 @@ impl<'a> DeployData<'a> {
 
         Ok(DeployDefs {
             ssh_user,
+            check_ssh_user,
+            check_ssh_opts,
             profile_user,
             profile_path,
             sudo,

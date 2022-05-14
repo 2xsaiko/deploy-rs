@@ -22,6 +22,7 @@ struct ActivateCommandData<'a> {
     debug_logs: bool,
     log_dir: Option<&'a str>,
     dry_activate: bool,
+    lock_owner: Option<&'a str>,
 }
 
 fn build_activate_command(data: &ActivateCommandData) -> String {
@@ -44,6 +45,13 @@ fn build_activate_command(data: &ActivateCommandData) -> String {
         "{} --confirm-timeout {}",
         self_activate_command, data.confirm_timeout
     );
+
+    if let Some(lock_owner) = data.lock_owner {
+        self_activate_command = format!(
+            "{} --lock-owner {}",
+            self_activate_command, lock_owner
+        )
+    }
 
     if data.magic_rollback {
         self_activate_command = format!("{} --magic-rollback", self_activate_command);
@@ -76,6 +84,7 @@ fn test_activation_command_builder() {
     let magic_rollback = true;
     let debug_logs = true;
     let log_dir = Some("/tmp/something.txt");
+    let lock_owner = Some("dummyuser");
 
     assert_eq!(
         build_activate_command(&ActivateCommandData {
@@ -88,9 +97,10 @@ fn test_activation_command_builder() {
             magic_rollback,
             debug_logs,
             log_dir,
-            dry_activate
+            dry_activate,
+            lock_owner,
         }),
-        "sudo -u test /nix/store/blah/etc/activate-rs --debug-logs --log-dir /tmp/something.txt activate '/nix/store/blah/etc' '/blah/profiles/test' --temp-path '/tmp' --confirm-timeout 30 --magic-rollback --auto-rollback"
+        "sudo -u test /nix/store/blah/etc/activate-rs --debug-logs --log-dir /tmp/something.txt activate '/nix/store/blah/etc' '/blah/profiles/test' --temp-path '/tmp' --confirm-timeout 30 --lock-owner dummyuser --magic-rollback --auto-rollback"
             .to_string(),
     );
 }
@@ -215,7 +225,7 @@ pub async fn confirm_profile(
     let mut ssh_confirm_command = Command::new("ssh");
     ssh_confirm_command.arg(ssh_addr);
 
-    for ssh_opt in &deploy_data.merged_settings.ssh_opts {
+    for ssh_opt in &deploy_defs.check_ssh_opts {
         ssh_confirm_command.arg(ssh_opt);
     }
 
@@ -289,6 +299,12 @@ pub async fn deploy_profile(
 
     let auto_rollback = deploy_data.merged_settings.auto_rollback.unwrap_or(true);
 
+    let lock_owner = if deploy_data.merged_settings.ssh_user == deploy_data.merged_settings.check_ssh_user {
+        None
+    } else {
+        deploy_data.merged_settings.check_ssh_user.as_deref()
+    };
+
     let self_activate_command = build_activate_command(&ActivateCommandData {
         sudo: &deploy_defs.sudo,
         profile_path: &deploy_defs.profile_path,
@@ -300,6 +316,7 @@ pub async fn deploy_profile(
         debug_logs: deploy_data.debug_logs,
         log_dir: deploy_data.log_dir,
         dry_activate,
+        lock_owner,
     });
 
     debug!("Constructed activation command: {}", self_activate_command);
@@ -310,6 +327,7 @@ pub async fn deploy_profile(
     };
 
     let ssh_addr = format!("{}@{}", deploy_defs.ssh_user, hostname);
+    let check_ssh_addr = format!("{}@{}", deploy_defs.check_ssh_user, hostname);
 
     let mut ssh_activate_command = Command::new("ssh");
     ssh_activate_command.arg(&ssh_addr);
@@ -354,9 +372,9 @@ pub async fn deploy_profile(
         info!("Creating activation waiter");
 
         let mut ssh_wait_command = Command::new("ssh");
-        ssh_wait_command.arg(&ssh_addr);
+        ssh_wait_command.arg(&check_ssh_addr);
 
-        for ssh_opt in &deploy_data.merged_settings.ssh_opts {
+        for ssh_opt in &deploy_defs.check_ssh_opts {
             ssh_wait_command.arg(ssh_opt);
         }
 
@@ -396,7 +414,7 @@ pub async fn deploy_profile(
 
         info!("Success activating, attempting to confirm activation");
 
-        let c = confirm_profile(deploy_data, deploy_defs, temp_path, &ssh_addr).await;
+        let c = confirm_profile(deploy_data, deploy_defs, temp_path, &check_ssh_addr).await;
         recv_activated.await.unwrap();
         c?;
 

@@ -10,6 +10,8 @@ use std::collections::HashMap;
 pub struct GenericSettings {
     #[serde(rename(deserialize = "sshUser"))]
     pub ssh_user: Option<String>,
+    #[serde(rename(deserialize = "checkSshUser"))]
+    pub check_ssh_user: Option<String>,
     pub user: Option<String>,
     #[serde(
         skip_serializing_if = "Vec::is_empty",
@@ -18,6 +20,13 @@ pub struct GenericSettings {
     )]
     #[merge(strategy = merge::vec::append)]
     pub ssh_opts: Vec<String>,
+    #[serde(
+        skip_serializing_if = "Vec::is_empty",
+        default,
+        rename(deserialize = "checkSshOpts")
+    )]
+    #[merge(strategy = opt_vec_append)]
+    pub check_ssh_opts: Option<Vec<String>>,
     #[serde(rename(deserialize = "fastConnection"))]
     pub fast_connection: Option<bool>,
     #[serde(rename(deserialize = "autoRollback"))]
@@ -30,6 +39,13 @@ pub struct GenericSettings {
     pub magic_rollback: Option<bool>,
     #[serde(rename(deserialize = "sudo"))]
     pub sudo: Option<String>,
+}
+
+fn opt_vec_append(acc: &mut Option<Vec<String>>, a: Option<Vec<String>>) {
+    match acc {
+        None => *acc = a,
+        Some(acc) => acc.extend(a.unwrap_or_default()),
+    };
 }
 
 #[derive(Deserialize, Debug, Clone)]

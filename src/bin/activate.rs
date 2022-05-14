@@ -4,6 +4,7 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+use std::fs::Permissions;
 use signal_hook::{consts::signal::SIGHUP, iterator::Signals};
 
 use clap::Clap;
@@ -72,6 +73,10 @@ struct ActivateOpts {
     /// Path for any temporary files that may be needed during activation
     #[clap(long)]
     temp_path: String,
+
+    /// Owner of the created lock file
+    #[clap(long)]
+    lock_owner: Option<String>,
 }
 
 /// Activate a profile
@@ -231,6 +236,7 @@ pub async fn activation_confirmation(
     temp_path: String,
     confirm_timeout: u16,
     closure: String,
+    lock_owner: Option<String>,
 ) -> Result<(), ActivationConfirmationError> {
     let lock_path = deploy::make_lock_path(&temp_path, &closure);
 
@@ -247,6 +253,15 @@ pub async fn activation_confirmation(
     fs::File::create(&lock_path)
         .await
         .map_err(ActivationConfirmationError::CreateConfirmFile)?;
+
+    if let Some(lock_owner) = lock_owner {
+        tokio::process::Command::new("chown")
+            .arg(lock_owner)
+            .arg(&lock_path)
+            .status()
+            .await
+            .map_err(ActivationConfirmationError::CreateConfirmFile)?;
+    }
 
     debug!("Creating notify watcher");
 
@@ -363,6 +378,7 @@ pub async fn activate(
     confirm_timeout: u16,
     magic_rollback: bool,
     dry_activate: bool,
+    lock_owner: Option<String>,
 ) -> Result<(), ActivateError> {
     if !dry_activate {
         info!("Activating profile");
@@ -428,7 +444,7 @@ pub async fn activate(
         if magic_rollback {
             info!("Magic rollback is enabled, setting up confirmation hook...");
 
-            match activation_confirmation(profile_path.clone(), temp_path, confirm_timeout, closure)
+            match activation_confirmation(profile_path.clone(), temp_path, confirm_timeout, closure, lock_owner)
                 .await
             {
                 Ok(()) => {}
@@ -479,6 +495,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             activate_opts.confirm_timeout,
             activate_opts.magic_rollback,
             activate_opts.dry_activate,
+            activate_opts.lock_owner
         )
         .await
         .map_err(|x| Box::new(x) as Box<dyn std::error::Error>),
