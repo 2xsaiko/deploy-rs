@@ -54,7 +54,7 @@ pub struct PushProfileData<'a> {
     pub extra_build_args: &'a [String],
 }
 
-pub async fn push_profile(data: PushProfileData<'_>) -> Result<(), PushProfileError> {
+pub async fn build_profile(data: PushProfileData<'_>) -> Result<(), PushProfileError> {
     debug!(
         "Finding the deriver of store path for {}",
         &data.deploy_data.profile.profile_settings.path
@@ -180,6 +180,10 @@ pub async fn push_profile(data: PushProfileData<'_>) -> Result<(), PushProfileEr
         };
     }
 
+    Ok(())
+}
+
+pub async fn push_profile(data: PushProfileData<'_>) -> Result<(), PushProfileError> {
     info!(
         "Copying profile `{}` to node `{}`",
         data.deploy_data.profile_name, data.deploy_data.node_name
